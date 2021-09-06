@@ -1,6 +1,5 @@
 #
-###### main.py -- Nodo ISP Antartida Argentina
-# Se establece como primer reporte MQTT y de emergencia LoRa
+# This software is for ISP Remote Node.
 #
 import socket
 import utime
@@ -18,22 +17,17 @@ import uModBus.meatrolcons as Meatrolcons
 from umqtt.robust import MQTTClient
 from uping.ping import ping
 
-#
-### Configuracion
-#
-# Arranco Pybytes
-from _pybytes import Pybytes
-from _pybytes_config import PybytesConfig
-conf = PybytesConfig().read_config()
-pybytes = Pybytes(conf)
+##### Define Configuration #####
 
-pybytes.start()
+### Board ID
+client_id = ubinascii.hexlify(machine.unique_id())
+print('Cliente ID:', client_id)
 
-### uModBus
+### uModBus Configuration
 modbus_obj = Serial(1, baudrate=9600, data_bits=8, stop_bits=1,
                     parity=None, pins=('P3', 'P4'), ctrl_pin=('P9'))
 
-#Tuplas para el Meter
+# Tuplas for the some registres form Meatrol Power Meter
 SLAVE_ADDR = 01
 SIGNED = True
 REG_MODBUS = [2147, 2149, 2151, 2139, 2141, 2143, 2000, 2002, 2004, 2155, 2157, 2159,
@@ -47,11 +41,8 @@ REG_TYPE = [0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x
 REG_VALUE = [0, 0, 0, 0, 0, 0]
 ENERGY_VALUE = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
-###
-### LORAWAN
-###
-
-# Configuro el numero de identificaion del microcontrolador y las cavles para conectarse al gateway
+### LORAWAN Configuration
+# TTN Parameters
 dev_addr = struct.unpack(">l", ubinascii.unhexlify(
     '26 0C 33 BF'.replace(' ', '')))[0]
 nwk_swkey = ubinascii.unhexlify(
@@ -59,12 +50,10 @@ nwk_swkey = ubinascii.unhexlify(
 app_swkey = ubinascii.unhexlify(
     '59BEEE9654FEF8FD497454D3B6852410'.replace(' ', ''))
 
-#Defino el objeto LoRa
+#Lora Wan Type
 lora = LoRa(mode=LoRa.LORAWAN)
 
-#Configuro el canal de LoRa en el cual voy a trabajar con el Gateway
-
-
+# Band for the Gateway
 def select_subband(lora, subband):
     if (type(subband) is int):
         if ((subband < 1) or (subband > 8)):
@@ -78,20 +67,17 @@ def select_subband(lora, subband):
                          + channel*200000, dr_min=0, dr_max=3)
         print(channel)
 
-
 sb = 1
 select_subband(lora, sb)
 
-# Defino un Socket para poder enviar los datos por LoRa
 s = socket.socket(socket.AF_LORA, socket.SOCK_RAW)
 s.setblocking(False)
 s.setsockopt(socket.SOL_LORA, socket.SO_DR, 3)
 
-# Coneccion a la Red
+# Gateway and TTN Conection
 lora.join(activation=LoRa.ABP, auth=(dev_addr, nwk_swkey, app_swkey))
 utime.sleep(5)
 
-# Espero para conectarme al gateway
 x = 0
 waitjoin = 0
 while lora.has_joined() == False and waitjoin < 20:
@@ -103,16 +89,12 @@ while lora.has_joined() == False and waitjoin < 20:
     utime.sleep(2)
     waitjoin = waitjoin+1
 
-## Board
-client_id = ubinascii.hexlify(machine.unique_id())
-print('Cliente ID:', client_id)
-
-## Time
+### Time RTC Configuration
 rtc = RTC()
 rtc.ntp_sync(ntp_host, 3600, ntp_backup)
-
 print("Hora Actual: ", rtc.now())
 
+### MQTT Ubidots Topic Configuration
 #Topic MQTT MCU
 topic_pub_rssi = b'/v1.6/devices/'+client_id+'/rssi'
 topic_pub_internet = b'/v1.6/devices/'+client_id+'/internet'
@@ -138,12 +120,7 @@ topic_pub_error = b'/v1.6/devices/'+client_id+'/error'
 #Topic Subscribe
 topic_sub_tsgral = b'/v1.6/devices/'+client_id+'/tsgral'
 
-#
-#
-###  Funciones
-#
-#
-
+#####  Fuctions Define #####
 
 def callback(topic, msg):
     global tsgral
