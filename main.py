@@ -225,6 +225,7 @@ def check_wlan():
     else:
         tuplawlan = wlan.joined_ap_info()
         rssi = str(tuplawlan[3])
+        client.publish(topic_pub_rssi, rssi)
         print("Conexion WiFi up!!! Nivel de senal:", rssi)
 
 
@@ -287,7 +288,6 @@ def data_pub():
                 print('Mensaje enviado: ', p)
                 p = p+1
                 utime.sleep(2)
-                client.publish(topic_pub_rssi, rssi)
                 last_message = utime.time()
 #               print_publish()
             except OSError as e:
