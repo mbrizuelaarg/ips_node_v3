@@ -295,32 +295,22 @@ def data_pub():
             utime.sleep(2)
 
 
-rcv_fail = 0
-rcv_ok = 0
-
-
 def check_internet():
-    global rcv_fail, rcv_ok
+    global rcv_int_fail, rcv_int_ok
     internet_up = ping('google.com')
     print("Respuesta de paquetes {0}".format(internet_up[1]))
-    rcv_ok = int(internet_up[1])
+    rcv_int_ok = int(internet_up[1])
     s.send(bytes([0x30]) + bytes([0x03]) + bytes([0x00, 0x01]))
     print('Paquete enviado por LoRa')
-    if rcv_ok == 0:
-        rcv_fail = rcv_fail + 1
-        if rcv_fail == 3:
-            rcv_fail = 0
+    if rcv_int_okok == 0:
+        rcv_int_fail = rcv_int_fail + 1
+        if rcv_int_fail == 3:
+            rcv_int_fail = 0
             print('No hay internet')
 
-#
-#
 #####  Inicializo la placa y los parametros de medicion
-#
-#
-
-
+# Start WiFi Connection
 wlan = WLAN(mode=WLAN.STA)
-resetwifi = 60
 
 if not wlan.isconnected():
     contwifi = 1
@@ -337,15 +327,16 @@ if not wlan.isconnected():
             utime.sleep(2)
             machine.reset()
         pass
-
+# Start MQTT Ubidots Connection
 try:
     client = connect_mqtt()
 except OSError as e:
     restart_and_reconnect()
 
-#Envio errores si hay
+# Send error file
 check_errorfile()
 
+# Start the loop
 while True:
     try:
         lectura()
