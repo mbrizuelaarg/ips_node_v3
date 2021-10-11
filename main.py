@@ -12,20 +12,33 @@ from machine import RTC, UART, Pin
 import os
 from network import LoRa, WLAN
 from parametros import *
+from udht.dht import DTH
 from uModBus.serial import Serial
 import uModBus.meatrolcons as Meatrolcons
 from umqtt.robust import MQTTClient
 from uping.ping import ping
 
+
 ##### Define Configuration #####
+
+### Start Pybytes
+from _pybytes import Pybytes
+from _pybytes_config import PybytesConfig
+conf = PybytesConfig().read_config()
+pybytes = Pybytes(conf)
+
+pybytes.start()
 
 ### Board ID
 client_id = ubinascii.hexlify(machine.unique_id())
 print('Cliente ID:', client_id)
 
+### UDHT
+dht1 = DTH(Pin('P23', mode=Pin.OPEN_DRAIN),0)
+
 ### uModBus Configuration
 modbus_obj = Serial(1, baudrate=9600, data_bits=8, stop_bits=1,
-                    parity=None, pins=('P3', 'P4'), ctrl_pin=('P9'))
+                    parity=None, pins=('P3', 'P4'), ctrl_pin=('P8'))
 
 # Tuplas for the some registres form Meatrol Power Meter
 SLAVE_ADDR = 01
@@ -106,10 +119,11 @@ topic_pub_i2 = b'/v1.6/devices/'+client_id+'/i2'
 topic_pub_i3 = b'/v1.6/devices/'+client_id+'/i3'
 topic_pub_temp = b'/v1.6/devices/'+client_id+'/temp'
 topic_pub_hum = b'/v1.6/devices/'+client_id+'/hum'
-topic_pub_alm1 = b'/v1.6/devices/'+client_id+'/alm1'
-topic_pub_alm2 = b'/v1.6/devices/'+client_id+'/alm2'
-topic_pub_alm3 = b'/v1.6/devices/'+client_id+'/alm3'
-topic_pub_alm4 = b'/v1.6/devices/'+client_id+'/alm4'
+topic_pub_alm01 = b'/v1.6/devices/'+client_id+'/alm01'
+topic_pub_alm02 = b'/v1.6/devices/'+client_id+'/alm02'
+topic_pub_alm03 = b'/v1.6/devices/'+client_id+'/alm03'
+topic_pub_alm04 = b'/v1.6/devices/'+client_id+'/alm04'
+topic_pub_alm05 = b'/v1.6/devices/'+client_id+'/alm05'
 
 TOPIC_VALUE = [topic_pub_u1, topic_pub_u2, topic_pub_u3,
                topic_pub_i1, topic_pub_i2, topic_pub_i3]
@@ -251,6 +265,19 @@ def check_pybytes():
     else:
         print("Conexion Pybytes up!!!")
 
+def check_internet():
+    global rcv_int_fail, rcv_int_ok
+    internet_up = ping('google.com')
+    print("Respuesta de paquetes {0}".format(internet_up[1]))
+    rcv_int_ok = int(internet_up[1])
+#    s.send(bytes([0x30]) + bytes([0x03]) + bytes([0x00, 0x01]))
+#    print('Paquete enviado por LoRa')
+    if rcv_int_ok == 0:
+        rcv_int_fail = rcv_int_fail + 1
+        if rcv_int_fail == 3:
+            rcv_int_fail = 0
+            print('No hay internet')
+
 
 def data_pub():
     global last_message, message_interval, rssi, u_min, u_max
@@ -292,21 +319,86 @@ def data_pub():
 #               print_publish()
             except OSError as e:
                 print('No se pudo leer Modbus')
-            utime.sleep(2)
+
+### Manejo de Alarmas
+
+def check_alarm():
+    global alm01_active, alm01_send, alm02_active, alm02_send, alm03_active, alm03_send, alm04_active, alm04_send, alm05_active, alm05_send
+    print('Estado de Alarma 01 (P11) =', alm01())
+    print('Estado de Alarma 02 (P12) =', alm02())
+    print('Estado de Alarma 03 (P13) =', alm03())
+    print('Estado de Alarma 04 (P14) =', alm04())
+    print('Estado de Alarma 05 (P16) =', alm05())
+    alm01_status = alm01()
+    alm02_status = alm02()
+    alm03_status = alm03()
+    alm04_status = alm04()
+    alm05_status = alm05()
+    if (alm01_active == 1) and (alm01_send <= 2):
+        client.publish(topic_pub_alm01, str(alm01_active))
+        print('Se envio alarma 01 Activa = ', alm01_active)
+        alm01_send = alm01_send + 1
+        print('Contador de envios = ', alm01_send)
+    if (alm01_status == 1) and (alm01_active == 1):
+        alm01_active = 0
+        alm01_send = 0
+        client.publish(topic_pub_alm01, str(alm01_active))
+### Alamrma 2
+    if (alm02_status == 0) and (alm02_send <= 2):
+        alm02_active = 1
+        client.publish(topic_pub_alm02, str(alm02_active))
+        print('Se envio alarma 02 Activa = ', alm02_active)
+        alm02_send = alm02_send + 1
+        print('Contador de envios = ', alm02_send)
+    if (alm02_status == 1) and (alm02_active == 1):
+        alm02_active = 0
+        alm02_send = 0
+        client.publish(topic_pub_alm02, str(alm02_active))
+### Alamrma 3
+    if (alm03_status == 0) and (alm03_send <= 2):
+        alm03_active = 1
+        client.publish(topic_pub_alm03, str(alm03_active))
+        print('Se envio alarma 03 Activa = ', alm03_active)
+        alm03_send = alm03_send + 1
+        print('Contador de envios = ', alm03_send)
+    if (alm03_status == 1) and (alm03_active == 1):
+        alm03_active = 0
+        alm03_send = 0
+        client.publish(topic_pub_alm03, str(alm03_active))
+### Alamrma 4
+    if (alm04_status == 0) and (alm04_send <= 2):
+        alm04_active = 1
+        client.publish(topic_pub_alm04, str(alm04_active))
+        print('Se envio alarma 04 Activa = ', alm04_active)
+        alm04_send = alm04_send + 1
+        print('Contador de envios = ', alm04_send)
+    if (alm04_status == 1) and (alm04_active == 1):
+        alm04_active = 0
+        alm04_send = 0
+        client.publish(topic_pub_alm04, str(alm04_active))
+### Alamrma 5
+    if (alm05_status == 0) and (alm05_send <= 2):
+        alm05_active = 1
+        client.publish(topic_pub_alm05, str(alm05_active))
+        print('Se envio alarma 05 Activa = ', alm05_active)
+        alm05_send = alm05_send + 1
+        print('Contador de envios = ', alm05_send)
+    if (alm05_status == 1) and (alm05_active == 1):
+        alm05_active = 0
+        alm05_send = 0
+        client.publish(topic_pub_alm05, str(alm05_active))
+
+def check_dht():
+    readdht = dht1.read()
+    if readdht.is_valid():
+        print("Temperature: %d C" % readdht.temperature)
+        print("Humidity: %d %%" % readdht.humidity)
+        client.publish(topic_pub_temp, str(readdht.temperature))
+        client.publish(topic_pub_hum, str(readdht.humidity))
+    else:
+        print('No se pudo leer sensor DHT')
 
 
-def check_internet():
-    global rcv_int_fail, rcv_int_ok
-    internet_up = ping('google.com')
-    print("Respuesta de paquetes {0}".format(internet_up[1]))
-    rcv_int_ok = int(internet_up[1])
-    s.send(bytes([0x30]) + bytes([0x03]) + bytes([0x00, 0x01]))
-    print('Paquete enviado por LoRa')
-    if rcv_int_okok == 0:
-        rcv_int_fail = rcv_int_fail + 1
-        if rcv_int_fail == 3:
-            rcv_int_fail = 0
-            print('No hay internet')
 
 #####  Inicializo la placa y los parametros de medicion
 # Start WiFi Connection
@@ -336,14 +428,54 @@ except OSError as e:
 # Send error file
 check_errorfile()
 
+### Alarmas
+print('Configuro las alarmas /n/n/n')
+alm01 = Pin('P11', mode=Pin.IN)
+alm02 = Pin('P12', mode=Pin.IN)
+alm03 = Pin('P13', mode=Pin.IN)
+alm04 = Pin('P14', mode=Pin.IN)
+alm05 = Pin('P16', mode=Pin.IN)
+
+alm01_active = str(1)
+alm01_send = 0
+alm02_active = str(0)
+alm02_send = 0
+alm03_active = str(0)
+alm03_send = 0
+alm04_active = str(0)
+alm04_send = 0
+alm05_active = str(0)
+alm05_send = 0
+
+def alm01_handler_active(arg):
+    global alm01_active
+    print('Se disparo ALM01/n')
+    alm01_active = 1
+    print(alm01_active)
+
+alm01.callback(Pin.IRQ_FALLING, alm01_handler_active, arg='ALM01')
+
+client.publish(topic_pub_alm01, alm01_active)
+client.publish(topic_pub_alm02, alm02_active)
+client.publish(topic_pub_alm03, alm03_active)
+client.publish(topic_pub_alm04, alm04_active)
+client.publish(topic_pub_alm05, alm05_active)
+
 # Start the loop
 while True:
     try:
         lectura()
         check_wlan()
         check_pybytes()
-#        check_internet()
+        check_internet()
+        check_alarm()
+        check_dht()
         data_pub()
-        utime.sleep(tsgral)
+        pycom.heartbeat(False)
+        pycom.rgbled(0x007f00) # green
+        utime.sleep(3)
+        pycom.rgbled(0x000000) # Off
+        pycom.heartbeat(True)
+#        utime.sleep(tsgral)
     except OSError as e:
         main_error()
