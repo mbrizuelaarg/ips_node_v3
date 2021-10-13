@@ -170,7 +170,7 @@ def report_error(error_code=0):
     # IN: str error = texto de error
     try:
         f = open('errores.txt', "a")
-        # si el archivo existe, continúe
+        # si el archivo existe, continÃºe
     except OSError:  # no se abre, creando uno nuevo
         f = open('errores.txt', 'w')
         # estructura del mensaje de error: fecha + hora; tiempo de actividad; nombre del dispositivo; ip; error; memoria libre
@@ -389,16 +389,32 @@ def check_alarm():
         client.publish(topic_pub_alm05, str(alm05_active))
 
 def check_dht():
+    global last_message_dht, message_interval_dht, dht_fail_send
     readdht = dht1.read()
     if readdht.is_valid():
         print("Temperature: %d C" % readdht.temperature)
         print("Humidity: %d %%" % readdht.humidity)
-        client.publish(topic_pub_temp, str(readdht.temperature))
-        client.publish(topic_pub_hum, str(readdht.humidity))
     else:
         print('No se pudo leer sensor DHT')
+    if ((utime.time() - last_message_dht) > message_interval_dht) or (dht_fail_send == 1):
+        readdht = dht1.read()
+        if readdht.is_valid():
+            print("Temperature: %d C" % readdht.temperature)
+            print("Humidity: %d %%" % readdht.humidity)
+            client.publish(topic_pub_temp, str(readdht.temperature))
+            client.publish(topic_pub_hum, str(readdht.humidity))
+            last_message_dht = utime.time()
+            dht_fail_send = 0
+        else:
+            print('No se pudo leer sensor DHT')
+            dht_fail_send = 1
 
-
+def rgb_led():
+    pycom.heartbeat(False)
+    pycom.rgbled(0x007f00) # green
+    utime.sleep(3)
+    pycom.rgbled(0x000000) # Off
+    pycom.heartbeat(True)
 
 #####  Inicializo la placa y los parametros de medicion
 # Start WiFi Connection
@@ -471,11 +487,7 @@ while True:
         check_alarm()
         check_dht()
         data_pub()
-        pycom.heartbeat(False)
-        pycom.rgbled(0x007f00) # green
-        utime.sleep(3)
-        pycom.rgbled(0x000000) # Off
-        pycom.heartbeat(True)
+        rgb_led()
 #        utime.sleep(tsgral)
     except OSError as e:
         main_error()
